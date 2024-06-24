@@ -1,0 +1,8 @@
+# Python packages and dependencies
+
+## Pip Packages
+pyright
+rich
+
+## Git Packages
+
