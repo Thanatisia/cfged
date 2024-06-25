@@ -2,6 +2,7 @@
 
 ## Table of Contents
 + [2024-06-24](#2024-06-24)
++ [2024-06-25](#2024-06-25)
 
 ## Changes
 ### 2024-06-24
@@ -34,4 +35,11 @@
                     + Added new module 'utils.py' containing the functions
     - Added new directory 'tests' containing Unit Tests
         + Added new unit test source 'test-core-ui-table.py' for testing the class 'TableUI' in 'cfged/core/ui/design'
+
+### 2024-06-25
+#### 2032H
+- Updates
+    - Updated document 'README.md'
+        + Added package information
+        + Added parameters and usage information
 
