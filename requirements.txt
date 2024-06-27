@@ -3,6 +3,7 @@
 ## Pip Packages
 pyright
 rich
+ruamel.yaml
 
 ## Git Packages
 

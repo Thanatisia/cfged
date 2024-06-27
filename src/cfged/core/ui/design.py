@@ -4,8 +4,48 @@ cfged UI Designer library
 import os
 import sys
 import json
+from ruamel.yaml import YAML, safe_load as yaml_load, safe_dump as yaml_dump
 from rich import print, print_json
+from rich.columns import Columns
+from rich.console import Console
 from rich.table import Table
+from rich.panel import Panel
+
+class UI():
+    """
+    UI Designing
+    """
+    def __init__(self):
+        # Initialize a new console object to print the rich objects
+        self.console = Console()
+
+    def insert_tables_to_Panel(self, tables:list, column_opts=None, panel_fitting_opts=None):
+        """
+        Insert a given table group column into a panel
+        """
+        # Define variables
+        if column_opts == None: column_opts = {}
+        if panel_fitting_opts == None: panel_fitting_opts = {}
+
+        # Create a column group containing the tables 
+        column_grp_Tables = Columns(tables, **column_opts)
+
+        # Create a panel and insert the table group arranged horizontally, side by side
+        panel = Panel.fit(column_grp_Tables, title="Display Tables", border_style="blue", title_align="left", padding=(1,2), **panel_fitting_opts)
+
+        # Return/Output
+        return panel
+
+    def print_console(self, obj, console=None):
+        """
+        Print the given object to the console
+        """
+        # Check if a console object is found
+        if console == None:
+            console = self.console
+
+        # Print the object to the console standard output
+        self.console.print(obj)
 
 class TableUI():
     """
@@ -14,8 +54,9 @@ class TableUI():
     def __init__(self):
         self.table = Table() # Initialize Table class
         self.table_data = { "columns" : [], "rows" : [] } # Initialize empty table data
+        self.yaml = YAML()
 
-    def import_dict_data(self, data):
+    def import_dict_data(self, data, table_data=None):
         """
         Import data from dictionary into table
 
@@ -27,11 +68,11 @@ class TableUI():
         - Table Formatting
             {
                 "columns" : [column-1, column-2, ...],
-                "rows" : { "column-1" : "cell-1", "column-2" : "cell-2" }
+                "rows" : [[{ "column-1" : "cell-1", "column-2" : "cell-2" }], ...]
             }
         """
         # Initialize Variables
-        table_data = { "columns" : [], "rows" : [{}] } # { "column" : [ "row-1", "row-2", ... ], ... }
+        if table_data == None: table_data = { "columns" : [], "rows" : [{}] } # { "column" : [ "row-1", "row-2", ... ], ... }
 
         # Iterate through the JSON dictionary
         for k,v in data.items():
@@ -48,33 +89,64 @@ class TableUI():
                 v = ""
 
             # Check the value's type
-            v_Type = type(v)
-            if v_Type == dict:
+            if isinstance(v, dict):
                 # Dictionaries
-                for nested_k, nested_v in v.items():
-                    print("{} = {}".format(nested_k, nested_v))
+                print("Dictionaries: {}".format(v))
 
-                    # Append the values into the list at the index
-                    table_data["rows"][0][k] = str(nested_v)
-            elif v_Type == list:
+                # Initialize a new entry in the row if the eky doesnt exist
+                if not (k in list(table_data["rows"][0].keys())):
+                    table_data["rows"][0][k] = ""
+
+                # Iterate through the dictionary mapping
+                nested_v_values = []
+                for nested_k, nested_v in v.items():
+                    print("Nested K {} = Nested V {}".format(nested_k, nested_v))
+                    nested_v_values.append(str(nested_v))
+
+                # Append the values into the list at the index
+                table_data["rows"][0][k] = '\n'.join(nested_v_values)
+
+                # Repeat the function
+                self.import_dict_data(v, table_data)
+                print("New Row: {}".format(table_data))
+            elif isinstance(v, list):
                 # Lists
+                print("List: {}".format(v))
+                list_elements = []
+
+                # Iterate through list value and place into temporary list
                 for i in range(len(v)):
                     # Get current element
                     curr_element = v[i]
                     print("{} = {}".format(i,curr_element))
 
                     # Append the values into the list at the index
-                    table_data["rows"][0][k] = str(curr_element)
-            elif v_Type == str:
+                    list_elements.append(str(curr_element))
+
+                table_data["rows"][0][k] = '\n'.join(list_elements)
+                print("New Row: {}".format(table_data))
+            elif isinstance(v, str):
                 # Strings
+                print("key: {}".format(k))
+                print("Strings: {}".format(v))
+
                 # Append the values into the list at the index
                 # json_keys["rows"].append({ k : v })
                 # json_keys["rows"][idx][k] = v
                 table_data["rows"][0][k] = v
+                print("New Row: {}".format(table_data))
             else:
                 # Non-Iterable, Non-Strings
+                print("key: {}".format(k))
+                print("Others: {}".format(v))
+
                 # Append the values into the list at the index
                 table_data["rows"][0][k] = str(v)
+                print("New Row: {}".format(table_data))
+
+            print("")
+
+        print("Imported Table Data: {}".format(table_data))
 
         # Output/Return
         return table_data
@@ -203,15 +275,21 @@ class TableUI():
             ## Add rows corresponding to the columns into the table
             self.table.add_row(*row_values)
 
-    def design_table(self, json_obj:str|list|dict):
+    def design_table(self, dataset:str|list|dict, cfg_file_type="json"):
         """
         Populate table column and rows and return the complete table
 
         :: Params
-        - json_obj : Specify the JSON string you wish to format into a table
+        - dataset : Specify the dataset string/list/dictionary you wish to format and parse into a table
             + Type: String | List | Dictionary
             - Format
-                + '[{"Hello" : "World", "World" : "Hello"}, {"Hello" : "World"}, {"World" : "Hello"}]'
+                + String: '[{"Hello" : "World", "World" : "Hello"}, {"Hello" : "World"}, {"World" : "Hello"}]'
+
+        - cfg_file_type : Specify the configuration file format belonging to the dataset you want to parse
+            + Type: String
+            + Default: json
+            - Supported values
+                + json
 
         :: Return
         - table : The resulting rich Table object after populated with Columns and Rows
@@ -221,22 +299,33 @@ class TableUI():
 
         """
         # Initialize Variables
-        json_values = {}
+        converted_values = {}
         table_data = {}
 
         ## Check type of object
-        if type(json_obj) == str:
+        if type(dataset) == str:
             ## String object
-            # Pass and convert the JSON string into a dictionary object
-            json_values = json.loads(json_obj)
-        elif (type(json_obj) == list) or (type(json_obj) == dict):
+            ### The object is a dataset string that hasnt been converted to a python object
+            ### - Check the provided file type and parse/convert accordingly
+            match cfg_file_type.lower():
+                case "json":
+                    # Pass and convert the JSON string into a dictionary object
+                    converted_values = json.loads(dataset)
+                case "yaml":
+                    # Pass and convert the YAML string into a dictionary object
+                    converted_values = dict(self.yaml.load(dataset))
+                case _:
+                    converted_values = dataset
+        elif (type(dataset) == list) or (type(dataset) == dict):
             ## Non-String
-            json_values = json_obj
+            converted_values = dataset
 
-        print(type(json_values))
+        # print("Converted Dataset: {} [{}] => {} [{}]".format(dataset, type(dataset), converted_values, type(converted_values)))
 
         # Import dataset into table data
-        table_data = self.import_dataset(json_values)
+        table_data = self.import_dataset(converted_values)
+
+        print("Imported Table Data: {}".format(table_data))
 
         # Obtain table components
         table_columns = table_data["columns"]
@@ -252,4 +341,72 @@ class TableUI():
 
         # Return/Output
         return self.table
+
+    def generate_tables(self, dataset, tables=None):
+        # Initialize Variables
+        if tables == None: tables = []
+
+        print("Dataset: {}".format(dataset))
+
+        ## Check if current dataset's type is list or dictionary
+        # if isinstance(dataset, list):
+        """
+        if isinstance(dataset, list):
+            ## List
+            # Iterate through the current dataset
+            for i in range(len(dataset)):
+                # Get the current root key and nested subkey-values
+                curr_row = dataset[i]
+
+                # Check value type
+                if isinstance(curr_row, list):
+                    print("{}".format(type(curr_row)))
+                    self.generate_tables(curr_row, tables)
+                if isinstance(curr_row, dict):
+                    print("{}".format(type(curr_row)))
+                    self.generate_tables(curr_row, tables)
+                else:
+                    print("{} : {}".format(i, curr_row))
+
+                    # Design table and populate with column and rows
+                    table = self.design_table(curr_row)
+
+                    # Append current table to the list
+                    tables.append(table)
+        elif isinstance(dataset, dict):
+            # Iterate through the current dataset
+            for k,v in dataset.items():
+                # Check value type
+                if isinstance(v, list):
+                    print("{}".format(type(v)))
+                    self.generate_tables(v, tables)
+                if isinstance(v, dict):
+                    print("{}".format(type(v)))
+                    self.generate_tables(v, tables)
+                else:
+                    print("{} : {}".format(k,v))
+
+                    # Design table and populate with column and rows
+                    table = self.design_table({k:v})
+
+                    # Append current table to the list
+                    tables.append(table)
+        """
+
+        # Design table and populate with column and rows
+        table = self.design_table(dataset)
+
+        print("Table Columns:")
+        table_cols = table.columns
+        for col in table_cols:
+            print(col.header)
+        print("Table Rows:")
+        table_rows = table.rows
+        for col in table_cols:
+            print(list(col.cells))
+
+        tables.append(table)
+
+        # Output/Return
+        return tables
 
